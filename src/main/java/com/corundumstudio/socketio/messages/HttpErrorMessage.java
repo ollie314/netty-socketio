@@ -13,17 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.corundumstudio.socketio.store.pubsub;
+package com.corundumstudio.socketio.messages;
 
+import java.util.Map;
 
-public interface PubSubStore {
+public class HttpErrorMessage extends HttpMessage {
 
-    void publish(PubSubType type, PubSubMessage msg);
+    private final Map<String, Object> data;
 
-    <T extends PubSubMessage> void subscribe(PubSubType type, PubSubListener<T> listener, Class<T> clazz);
+    public HttpErrorMessage(Map<String, Object> data) {
+        super(null, null);
+        this.data = data;
+    }
 
-    void unsubscribe(PubSubType type);
-
-    void shutdown();
-
+    public Map<String, Object> getData() {
+        return data;
+    }
+    
 }

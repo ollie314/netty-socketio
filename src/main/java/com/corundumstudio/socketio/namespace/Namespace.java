@@ -15,8 +15,6 @@
  */
 package com.corundumstudio.socketio.namespace;
 
-import io.netty.util.internal.PlatformDependent;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -45,8 +43,10 @@ import com.corundumstudio.socketio.protocol.JsonSupport;
 import com.corundumstudio.socketio.protocol.Packet;
 import com.corundumstudio.socketio.store.StoreFactory;
 import com.corundumstudio.socketio.store.pubsub.JoinLeaveMessage;
-import com.corundumstudio.socketio.store.pubsub.PubSubStore;
+import com.corundumstudio.socketio.store.pubsub.PubSubType;
 import com.corundumstudio.socketio.transport.NamespaceClient;
+
+import io.netty.util.internal.PlatformDependent;
 
 /**
  * Hub object for all clients in one namespace.
@@ -104,6 +104,14 @@ public class Namespace implements SocketIONamespace {
         }
         entry.addListener(listener);
         jsonSupport.addEventMapping(name, eventName, eventClass);
+    }
+    
+    @Override
+    public void removeAllListeners(String eventName) {
+        EventEntry<?> entry = eventListeners.remove(eventName);
+        if (entry != null) {
+            jsonSupport.removeEventMapping(name, eventName);
+        }
     }
 
     @Override
@@ -169,10 +177,16 @@ public class Namespace implements SocketIONamespace {
     }
 
     public void onDisconnect(SocketIOClient client) {
+        Set<String> joinedRooms = client.getAllRooms();        
         allClients.remove(client.getSessionId());
 
         leave(getName(), client.getSessionId());
-        storeFactory.pubSubStore().publish(PubSubStore.LEAVE, new JoinLeaveMessage(client.getSessionId(), getName(), getName()));
+        storeFactory.pubSubStore().publish(PubSubType.LEAVE, new JoinLeaveMessage(client.getSessionId(), getName(), getName()));
+
+        for (String joinedRoom : joinedRooms) {
+            leave(roomClients, joinedRoom, client.getSessionId());
+        }
+        clientRooms.remove(client.getSessionId());
 
         try {
             for (DisconnectListener listener : disconnectListeners) {
@@ -190,7 +204,7 @@ public class Namespace implements SocketIONamespace {
 
     public void onConnect(SocketIOClient client) {
         join(getName(), client.getSessionId());
-        storeFactory.pubSubStore().publish(PubSubStore.JOIN, new JoinLeaveMessage(client.getSessionId(), getName(), getName()));
+        storeFactory.pubSubStore().publish(PubSubType.JOIN, new JoinLeaveMessage(client.getSessionId(), getName(), getName()));
 
         try {
             for (ConnectListener listener : connectListeners) {
@@ -248,7 +262,7 @@ public class Namespace implements SocketIONamespace {
 
     public void joinRoom(String room, UUID sessionId) {
         join(room, sessionId);
-        storeFactory.pubSubStore().publish(PubSubStore.JOIN, new JoinLeaveMessage(sessionId, room, getName()));
+        storeFactory.pubSubStore().publish(PubSubType.JOIN, new JoinLeaveMessage(sessionId, room, getName()));
     }
 
     public void dispatch(String room, Packet packet) {
@@ -283,7 +297,7 @@ public class Namespace implements SocketIONamespace {
 
     public void leaveRoom(String room, UUID sessionId) {
         leave(room, sessionId);
-        storeFactory.pubSubStore().publish(PubSubStore.LEAVE, new JoinLeaveMessage(sessionId, room, getName()));
+        storeFactory.pubSubStore().publish(PubSubType.LEAVE, new JoinLeaveMessage(sessionId, room, getName()));
     }
 
     private <K, V> void leave(ConcurrentMap<K, Set<V>> map, K room, V sessionId) {
@@ -300,7 +314,7 @@ public class Namespace implements SocketIONamespace {
 
     public void leave(String room, UUID sessionId) {
         leave(roomClients, room, sessionId);
-        clientRooms.remove(sessionId);
+        leave(clientRooms, sessionId, room);
     }
 
     public Set<String> getRooms(SocketIOClient client) {

@@ -15,15 +15,13 @@
  */
 package com.corundumstudio.socketio.store.pubsub;
 
+public enum PubSubType {
 
-public interface PubSubStore {
+    CONNECT, DISCONNECT, JOIN, LEAVE, DISPATCH;
 
-    void publish(PubSubType type, PubSubMessage msg);
-
-    <T extends PubSubMessage> void subscribe(PubSubType type, PubSubListener<T> listener, Class<T> clazz);
-
-    void unsubscribe(PubSubType type);
-
-    void shutdown();
+    @Override
+    public String toString() {
+        return name().toLowerCase();
+    }
 
 }

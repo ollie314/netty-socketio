@@ -119,9 +119,10 @@ public class PacketDecoder {
     public Packet decodePackets(ByteBuf buffer, ClientHead client) throws IOException {
         if (isStringPacket(buffer)) {
             // TODO refactor
-            int headEndIndex = buffer.bytesBefore(10, (byte)-1);
+            int maxLength = Math.min(buffer.readableBytes(), 10);
+            int headEndIndex = buffer.bytesBefore(maxLength, (byte)-1);
             if (headEndIndex == -1) {
-                headEndIndex = buffer.bytesBefore(10, (byte)0x3f);
+                headEndIndex = buffer.bytesBefore(maxLength, (byte)0x3f);
             }
             int len = (int) readLong(buffer, headEndIndex);
 
@@ -252,7 +253,11 @@ public class PacketDecoder {
                     ByteBuf scanValue = Unpooled.copiedBuffer("{\"_placeholder\":true,\"num\":" + i + "}", CharsetUtil.UTF_8);
                     int pos = PacketEncoder.find(source, scanValue);
                     if (pos == -1) {
-                        throw new IllegalStateException("Can't find attachment by index: " + i + " in packet source");
+                        scanValue = Unpooled.copiedBuffer("{\"num\":" + i + ",\"_placeholder\":true}", CharsetUtil.UTF_8);
+                        pos = PacketEncoder.find(source, scanValue);
+                        if (pos == -1) {
+                            throw new IllegalStateException("Can't find attachment by index: " + i + " in packet source");
+                        }
                     }
 
                     ByteBuf prefixBuf = source.slice(source.readerIndex(), pos - source.readerIndex());

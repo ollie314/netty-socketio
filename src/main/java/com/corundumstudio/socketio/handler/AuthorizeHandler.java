@@ -35,6 +35,7 @@ import com.corundumstudio.socketio.HandshakeData;
 import com.corundumstudio.socketio.SocketIOClient;
 import com.corundumstudio.socketio.Transport;
 import com.corundumstudio.socketio.ack.AckManager;
+import com.corundumstudio.socketio.messages.HttpErrorMessage;
 import com.corundumstudio.socketio.namespace.Namespace;
 import com.corundumstudio.socketio.namespace.NamespacesHub;
 import com.corundumstudio.socketio.protocol.AuthPacket;
@@ -45,7 +46,7 @@ import com.corundumstudio.socketio.scheduler.SchedulerKey;
 import com.corundumstudio.socketio.scheduler.SchedulerKey.Type;
 import com.corundumstudio.socketio.store.StoreFactory;
 import com.corundumstudio.socketio.store.pubsub.ConnectMessage;
-import com.corundumstudio.socketio.store.pubsub.PubSubStore;
+import com.corundumstudio.socketio.store.pubsub.PubSubType;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFutureListener;
@@ -116,7 +117,6 @@ public class AuthorizeHandler extends ChannelInboundHandlerAdapter implements Di
                 HttpResponse res = new DefaultHttpResponse(HTTP_1_1, HttpResponseStatus.BAD_REQUEST);
                 channel.writeAndFlush(res).addListener(ChannelFutureListener.CLOSE);
                 req.release();
-                log.warn("Blocked wrong request! url: {}, ip: {}", queryDecoder.path(), channel.remoteAddress());
                 return;
             }
 
@@ -165,7 +165,7 @@ public class AuthorizeHandler extends ChannelInboundHandlerAdapter implements Di
 
         List<String> transportValue = params.get("transport");
         if (transportValue == null) {
-            log.warn("Got no transports for request {}", req.uri());
+            log.error("Got no transports for request {}", req.uri());
 
             HttpResponse res = new DefaultHttpResponse(HTTP_1_1, HttpResponseStatus.UNAUTHORIZED);
             channel.writeAndFlush(res).addListener(ChannelFutureListener.CLOSE);
@@ -173,10 +173,19 @@ public class AuthorizeHandler extends ChannelInboundHandlerAdapter implements Di
         }
 
         Transport transport = Transport.byName(transportValue.get(0));
+        if (!configuration.getTransports().contains(transport)) {
+            Map<String, Object> errorData = new HashMap<String, Object>();
+            errorData.put("code", 0);
+            errorData.put("message", "Transport unknown");
+            
+            channel.attr(EncoderHandler.ORIGIN).set(origin);
+            channel.writeAndFlush(new HttpErrorMessage(errorData));
+            return false;
+        }
+        
         ClientHead client = new ClientHead(sessionId, ackManager, disconnectable, storeFactory, data, clientsBox, transport, disconnectScheduler, configuration);
         channel.attr(ClientHead.CLIENT).set(client);
         clientsBox.addClient(client);
-
 
         String[] transports = {};
         if (configuration.getTransports().contains(Transport.WEBSOCKET)) {
@@ -224,7 +233,7 @@ public class AuthorizeHandler extends ChannelInboundHandlerAdapter implements Di
             packet.setSubType(PacketType.CONNECT);
             client.send(packet);
 
-            configuration.getStoreFactory().pubSubStore().publish(PubSubStore.CONNECT, new ConnectMessage(client.getSessionId()));
+            configuration.getStoreFactory().pubSubStore().publish(PubSubType.CONNECT, new ConnectMessage(client.getSessionId()));
 
             SocketIOClient nsClient = client.addNamespaceClient(ns);
             ns.onConnect(nsClient);
